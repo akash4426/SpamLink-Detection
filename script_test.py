@@ -36,11 +36,11 @@ def predict_url(url):
 
    
     if any(t in domain for t in trusted_domains):
-        return "✅ Legitimate (Whitelisted)"
+        return "Safe (Whitelisted)"
 
     
     if domain in suspicious_hosts and len(subdomain_parts) >= 2:
-        return f"🚨 Phishing (Suspicious subdomain on {domain})"
+        return f"Phishing (Suspicious subdomain on {domain})"
 
    
     features = {
@@ -64,11 +64,11 @@ def predict_url(url):
     phishing_proba = model.predict_proba(input_df)[0][1]
 
     if phishing_proba > 0.6:
-        return f"🚨 Phishing (Confidence: {phishing_proba * 100:.2f}%)"
+        return f" Phishing (Confidence: {phishing_proba * 100:.2f}%)"
     elif phishing_proba > 0.4:
-        return f"⚠️ Suspicious (Confidence: {phishing_proba * 100:.2f}%)"
+        return f" Suspicious (Confidence: {phishing_proba * 100:.2f}%)"
     else:
-        return f"✅ Legitimate (Confidence: { (1 - phishing_proba) * 100:.2f}%)"
+        return f" Safe (Confidence: { (1 - phishing_proba) * 100:.2f}%)"
 
 st.title("Real-Time Phishing detector.")
 st.write("Enter any URL to check"," ")
