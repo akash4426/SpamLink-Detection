@@ -1,0 +1,11 @@
+url_length
+dot_count
+hyphen_count
+digit_count
+is_https
+domain_length
+path_length
+domain_suffix
+has_a_record
+has_mx_record
+subdomain_depth
