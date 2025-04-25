@@ -7,7 +7,7 @@ import pandas as pd
 from difflib import SequenceMatcher
 
 # Load the trained model
-model = joblib.load("phishing_model.pkl")
+model = joblib.load("phishing_model_updated.pkl")
 
 # Cache DNS results
 dns_cache = {}
