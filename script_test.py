@@ -56,8 +56,9 @@ def extract_features(url):
         'subdomain_depth': parsed.netloc.count('.') - 1,
     }
 
-    # Ensure all expected features are present and ordered
-    return pd.DataFrame([[features[feat] for feat in feature_names]], columns=feature_names)
+    # Ensure all expected features are present and ordered as per model's feature names
+    feature_vector = [features.get(feat, 0) for feat in feature_names]  # Default to 0 if feature is missing
+    return pd.DataFrame([feature_vector], columns=feature_names)
 
 # --- Streamlit App UI ---
 st.title("🔍 Phishing URL Detector")
