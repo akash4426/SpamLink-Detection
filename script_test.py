@@ -1,17 +1,21 @@
+import streamlit as st
+import pandas as pd
 import joblib
 from urllib.parse import urlparse
 import tldextract
 import dns.resolver
-import pandas as pd
-import streamlit as st
+from difflib import SequenceMatcher
 
+# Load model and feature names
+model = joblib.load("phishing_model.pkl")
+feature_names = joblib.load("model_features.pkl")
 
-model = joblib.load("phishing_model_updated.pkl")
-with open("model_features.txt", "r") as f:
-    expected_columns = f.read().splitlines()
-
-
+# DNS cache
 dns_cache = {}
+
+# Suspicious TLDs and brand list
+suspicious_tlds = {'tk', 'ml', 'ga', 'cf', 'gq', 'site', 'xyz', 'buzz'}
+known_brands = ["paypal", "google", "apple", "microsoft", "wikipedia", "facebook", "instagram", "amazon", "netflix"]
 
 def check_dns(domain, rtype):
     key = (domain, rtype)
@@ -24,25 +28,18 @@ def check_dns(domain, rtype):
         dns_cache[key] = 0
     return dns_cache[key]
 
+def is_similar_to_known_brand(domain):
+    for brand in known_brands:
+        similarity = SequenceMatcher(None, domain, brand).ratio()
+        if similarity > 0.75:
+            return 1
+    return 0
 
-trusted_domains = ["paypal.com", "google.com", "microsoft.com", "apple.com"]
-suspicious_hosts = ["trycloudflare.com", "glitch.me", "replit.dev", "web.app"]
-
-def predict_url(url):
+def extract_features(url):
     parsed = urlparse(url if url.startswith("http") else "http://" + url)
     ext = tldextract.extract(url)
     domain = f"{ext.domain}.{ext.suffix}"
-    subdomain_parts = ext.subdomain.split('.')
 
-   
-    if any(t in domain for t in trusted_domains):
-        return "✅ Legitimate (Whitelisted)"
-
-    
-    if domain in suspicious_hosts and len(subdomain_parts) >= 2:
-        return f"🚨 Phishing (Suspicious subdomain on {domain})"
-
-   
     features = {
         'url_length': len(url),
         'dot_count': url.count('.'),
@@ -51,35 +48,36 @@ def predict_url(url):
         'is_https': int(url.startswith('https')),
         'domain_length': len(parsed.netloc),
         'path_length': len(parsed.path),
-        'subdomain_depth': len(subdomain_parts),
         'domain_suffix': pd.Series([ext.suffix]).astype("category").cat.codes[0],
         'has_a_record': check_dns(domain, 'A'),
-        'has_mx_record': check_dns(domain, 'MX')
+        'has_mx_record': check_dns(domain, 'MX'),
+        'suspicious_tld': int(ext.suffix in suspicious_tlds),
+        'brand_similarity': is_similar_to_known_brand(ext.domain),
+        'subdomain_depth': parsed.netloc.count('.') - 1,
     }
 
- 
-    input_df = pd.DataFrame([features])
-    input_df = input_df.reindex(columns=expected_columns)
+    # Ensure all expected features are present and ordered
+    return pd.DataFrame([[features[feat] for feat in feature_names]], columns=feature_names)
 
-    phishing_proba = model.predict_proba(input_df)[0][1]
+# --- Streamlit App UI ---
+st.title("🔍 Phishing URL Detector")
 
-    if phishing_proba > 0.6:
-        return f"🚨 Phishing (Confidence: {phishing_proba * 100:.2f}%)"
-    elif phishing_proba > 0.4:
-        return f"⚠️ Suspicious (Confidence: {phishing_proba * 100:.2f}%)"
-    else:
-        return f"✅ Legitimate (Confidence: { (1 - phishing_proba) * 100:.2f}%)"
-
-st.title("Real-Time Phishing detector.")
-st.write("Enter any URL to check"," ")
-
-url = st.text_input("URL HERE!!")
+url_input = st.text_input("Enter a URL to verify")
 
 if st.button("Verify"):
+    if url_input.strip() == "":
+        st.warning("Please enter a valid URL.")
+    else:
+        try:
+            input_df = extract_features(url_input)
+            phishing_proba = model.predict_proba(input_df)[0][1]
 
-      if url:
-          result=predict_url(url)
-          st.write(result)
-      else:
-          st.write("Enter valid URL")
-    
+            if phishing_proba > 0.6:
+                st.error(f"🚨 Phishing Detected!")
+            elif phishing_proba > 0.4:
+                st.warning(f"⚠️ Suspicious Link!")
+            else:
+                st.success(f"✅ Legitimate Link")
+
+        except Exception as e:
+            st.error(f"Error analyzing the URL: {e}")
