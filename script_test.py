@@ -17,8 +17,9 @@ dns_cache = {}
 suspicious_tlds = {'tk', 'ml', 'ga', 'cf', 'gq', 'site', 'xyz', 'buzz'}
 known_brands = ["paypal", "google", "apple", "microsoft", "wikipedia", "facebook", "instagram", "amazon", "netflix"]
 
-def check_dns(domain, rtype):
-    key = (domain, rtype)
+def check_dns(domain, rtype):   #rtype(A,MX record)
+    key = (domain, rtype) #a unique key will be created 
+    
     if key in dns_cache:
         return dns_cache[key]
     try:
@@ -60,7 +61,7 @@ def extract_features(url):
     feature_vector = [features.get(feat, 0) for feat in feature_names]  # Default to 0 if feature is missing
     return pd.DataFrame([feature_vector], columns=feature_names)
 
-# --- Streamlit App UI ---
+
 st.title("🔍 Phishing URL Detector")
 
 url_input = st.text_input("Enter a URL to verify")
