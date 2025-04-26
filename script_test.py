@@ -1,25 +1,19 @@
-import streamlit as st
-import pandas as pd
 import joblib
 from urllib.parse import urlparse
 import tldextract
 import dns.resolver
-from difflib import SequenceMatcher
+import pandas as pd
 
-# Load model and feature names
-model = joblib.load("phishing_model.pkl")
-feature_names = joblib.load("model_features.pkl")
+# Load trained model and feature order
+model = joblib.load("phishing_model_updated.pkl")
+with open("model_features.txt", "r") as f:
+    expected_columns = f.read().splitlines()
 
 # DNS cache
 dns_cache = {}
 
-# Suspicious TLDs and brand list
-suspicious_tlds = {'tk', 'ml', 'ga', 'cf', 'gq', 'site', 'xyz', 'buzz'}
-known_brands = ["paypal", "google", "apple", "microsoft", "wikipedia", "facebook", "instagram", "amazon", "netflix"]
-
-def check_dns(domain, rtype):   #rtype(A,MX record)
-    key = (domain, rtype) #a unique key will be created 
-    
+def check_dns(domain, rtype):
+    key = (domain, rtype)
     if key in dns_cache:
         return dns_cache[key]
     try:
@@ -29,18 +23,26 @@ def check_dns(domain, rtype):   #rtype(A,MX record)
         dns_cache[key] = 0
     return dns_cache[key]
 
-def is_similar_to_known_brand(domain):
-    for brand in known_brands:
-        similarity = SequenceMatcher(None, domain, brand).ratio()
-        if similarity > 0.75:
-            return 1
-    return 0
+# Trusted domains and suspicious hosts
+trusted_domains = ["paypal.com", "google.com", "microsoft.com", "apple.com"]
+suspicious_hosts = ["trycloudflare.com", "glitch.me", "replit.dev", "web.app"]
 
-def extract_features(url):
+# Prediction function
+def predict_url(url):
     parsed = urlparse(url if url.startswith("http") else "http://" + url)
     ext = tldextract.extract(url)
     domain = f"{ext.domain}.{ext.suffix}"
+    subdomain_parts = ext.subdomain.split('.')
 
+    # Whitelisted domains shortcut
+    if any(t in domain for t in trusted_domains):
+        return "✅ Legitimate (Whitelisted)"
+
+    # Suspicious hosting detection
+    if domain in suspicious_hosts and len(subdomain_parts) >= 2:
+        return f"🚨 Phishing (Suspicious subdomain on {domain})"
+
+    # Extract features
     features = {
         'url_length': len(url),
         'dot_count': url.count('.'),
@@ -49,37 +51,35 @@ def extract_features(url):
         'is_https': int(url.startswith('https')),
         'domain_length': len(parsed.netloc),
         'path_length': len(parsed.path),
+        'subdomain_depth': len(subdomain_parts),
         'domain_suffix': pd.Series([ext.suffix]).astype("category").cat.codes[0],
         'has_a_record': check_dns(domain, 'A'),
-        'has_mx_record': check_dns(domain, 'MX'),
-        'suspicious_tld': int(ext.suffix in suspicious_tlds),
-        'brand_similarity': is_similar_to_known_brand(ext.domain),
-        'subdomain_depth': parsed.netloc.count('.') - 1,
+        'has_mx_record': check_dns(domain, 'MX')
     }
 
-    # Ensure all expected features are present and ordered as per model's feature names
-    feature_vector = [features.get(feat, 0) for feat in feature_names]  # Default to 0 if feature is missing
-    return pd.DataFrame([feature_vector], columns=feature_names)
+    # Build input dataframe and align columns
+    input_df = pd.DataFrame([features])
+    input_df = input_df.reindex(columns=expected_columns)
 
+    # Convert to numpy array to avoid feature name warnings
+    input_df_np = input_df.values
 
-st.title("🔍 Phishing URL Detector")
+    # Prediction
+    phishing_proba = model.predict_proba(input_df_np)[0][1]
 
-url_input = st.text_input("Enter a URL to verify")
-
-if st.button("Verify"):
-    if url_input.strip() == "":
-        st.warning("Please enter a valid URL.")
+    if phishing_proba > 0.6:
+        return "🚨 Phishing"
+    elif phishing_proba > 0.4:
+        return "⚠️ Suspicious"
     else:
-        try:
-            input_df = extract_features(url_input)
-            phishing_proba = model.predict_proba(input_df)[0][1]
+        return "✅ Legitimate"
 
-            if phishing_proba > 0.6:
-                st.error(f"🚨 Phishing Detected!")
-            elif phishing_proba > 0.4:
-                st.warning(f"⚠️ Suspicious Link!")
-            else:
-                st.success(f"✅ Legitimate Link")
-
-        except Exception as e:
-            st.error(f"Error analyzing the URL: {e}")
+# 🔄 Main CLI loop
+if __name__ == "__main__":
+    while True:
+        url = input("\n🔗 Enter a URL to test (or type 'exit' to quit):\n> ")
+        if url.lower() == "exit":
+            print("👋 Exiting the detector. Stay safe!")
+            break
+        result = predict_url(url)
+        print(f"\n🔍 Result: {result}")
