@@ -1,10 +1,11 @@
+import streamlit as st
 import joblib
 from urllib.parse import urlparse
 import tldextract
 import dns.resolver
 import pandas as pd
 
-# Load trained model and feature order
+# Load model and expected features
 model = joblib.load("phishing_model_updated.pkl")
 with open("model_features.txt", "r") as f:
     expected_columns = f.read().splitlines()
@@ -23,7 +24,7 @@ def check_dns(domain, rtype):
         dns_cache[key] = 0
     return dns_cache[key]
 
-# Trusted domains and suspicious hosts
+# Trusted and suspicious hosts
 trusted_domains = ["paypal.com", "google.com", "microsoft.com", "apple.com"]
 suspicious_hosts = ["trycloudflare.com", "glitch.me", "replit.dev", "web.app"]
 
@@ -40,9 +41,9 @@ def predict_url(url):
 
     # Suspicious hosting detection
     if domain in suspicious_hosts and len(subdomain_parts) >= 2:
-        return f"🚨 Phishing (Suspicious subdomain on {domain})"
+        return "🚨 Phishing (Suspicious Hosting Detected)"
 
-    # Extract features
+    # Feature extraction
     features = {
         'url_length': len(url),
         'dot_count': url.count('.'),
@@ -57,11 +58,10 @@ def predict_url(url):
         'has_mx_record': check_dns(domain, 'MX')
     }
 
-    # Build input dataframe and align columns
     input_df = pd.DataFrame([features])
     input_df = input_df.reindex(columns=expected_columns)
 
-    # Convert to numpy array to avoid feature name warnings
+    # Convert to numpy array
     input_df_np = input_df.values
 
     # Prediction
@@ -74,12 +74,20 @@ def predict_url(url):
     else:
         return "✅ Legitimate"
 
-# 🔄 Main CLI loop
-if __name__ == "__main__":
-    while True:
-        url = input("\n🔗 Enter a URL to test (or type 'exit' to quit):\n> ")
-        if url.lower() == "exit":
-            print("👋 Exiting the detector. Stay safe!")
-            break
-        result = predict_url(url)
-        print(f"\n🔍 Result: {result}")
+# -------------------- Streamlit UI --------------------
+
+st.set_page_config(page_title="🛡️ Phishing URL Detector", page_icon="🔗")
+st.title("🛡️ Phishing URL Detection App")
+st.write("🔍 Enter a URL below to check if it is Legitimate, Suspicious, or Phishing.")
+
+user_input = st.text_input("🔗 Enter URL")
+
+if st.button("Check URL"):
+    if user_input:
+        with st.spinner('Analyzing the URL...'):
+            result = predict_url(user_input)
+        st.markdown(f"### Prediction Result: {result}")
+    else:
+        st.warning("Please enter a URL to proceed!")
+
+st.markdown("---")
